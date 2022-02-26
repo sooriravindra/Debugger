@@ -29,9 +29,11 @@ int main(int argc, char* argv[]) {
     execv(argv[1], &argv[1]);
     cerr << "Failed to exec program" << endl;
     return 3;
-  } else {
-    // Instantiate debugger and observe & control child 
-    Debugger my_debugger(pid);
-    my_debugger.StartRepl();
-  };
+  }
+
+  // This be parent.
+  // Instantiate debugger and observe & control child
+  Debugger my_debugger(pid);
+  my_debugger.StartRepl();
+
 }
