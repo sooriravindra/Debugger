@@ -1,4 +1,6 @@
+#include <sys/personality.h>
 #include <sys/ptrace.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <iostream>
@@ -7,6 +9,11 @@
 using std::cerr;
 using std::cout;
 using std::endl;
+
+void fail(const std::string& msg) {
+  cerr << "Fail: " << msg << "!!" << endl;
+  exit(1);
+}
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
@@ -20,20 +27,26 @@ int main(int argc, char* argv[]) {
   // and then there were two...
 
   if (pid == 0) {
+    // Disable ASLR in child so we can give addresses
+    personality(ADDR_NO_RANDOMIZE);
+
     // Let the child be examinable and controllable by the parent
     auto ret = ptrace(PTRACE_TRACEME, 0, nullptr, nullptr);
     if (ret != 0) {
-      cerr << "Ptrace failed :(" << endl;
-      return 2;
+      fail("ptrace");
     }
+
+    // Execute!!
     execv(argv[1], &argv[1]);
-    cerr << "Failed to exec program" << endl;
-    return 3;
+    fail("exec");
+  } else {
+    int status;
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status)) {
+      fail("Debugee terminated");
+    }
+    // Instantiate debugger and observe & control child
+    Debugger my_debugger(pid);
+    my_debugger.StartRepl();
   }
-
-  // This be parent.
-  // Instantiate debugger and observe & control child
-  Debugger my_debugger(pid);
-  my_debugger.StartRepl();
-
 }
