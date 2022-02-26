@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "breakpoint.h"
+#include "registers.h"
 
 class Debugger {
  public:
@@ -19,6 +20,8 @@ class Debugger {
   void ProcessCommand(const std::string &cmd);
   static bool MatchCmd(std::vector<std::string> &input, const std::string &cmd,
                        int num_args);
+  uint64_t GetRegister(Register::Reg r) const;
+  uint64_t GetRegister(std::string s) const;
   static std::vector<std::string> SplitCommand(const std::string &cmd);
   pid_t pid_;
   std::unordered_set<Breakpoint, Breakpoint::HashFunction> breakpoints_;
