@@ -31,15 +31,28 @@ void Debugger::SetBreakpointAtAddress(std::uintptr_t addr) {
   Breakpoint b(pid_, addr);
   b.Enable();
   breakpoints_.insert(b);
+  std::cout << "Breakpoint set at address : 0x" << std::hex << addr
+            << std::endl;
 }
 
-bool Debugger::MatchCmd(const std::string& input, const std::string& cmd) {
+bool Debugger::MatchCmd(std::vector<std::string>& input, const std::string& cmd,
+                        int num_args) {
   // If input is longer, there are garbage character at the end
-  if (input.size() > cmd.size()) {
+  if (input[0].size() > cmd.size()) {
     return false;
   }
   // Now match all of input to cmd till the length of input
-  return std::equal(input.begin(), input.end(), cmd.begin());
+  if (!std::equal(input[0].begin(), input[0].end(), cmd.begin())) {
+    return false;
+  }
+
+  // Check there are right number of arguments
+  if (input.size() != num_args + 1) {
+    std::cerr << cmd << " takes " << num_args << " arguments." << std::endl;
+    return false;
+  }
+
+  return true;
 }
 
 std::vector<std::string> Debugger::SplitCommand(const std::string& cmd) {
@@ -59,15 +72,14 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     return;
   }
 
-  if (MatchCmd(cmd_argv[0], "continue")) {
+  if (MatchCmd(cmd_argv, "continue", 0)) {
     Continue();
-  } else if (MatchCmd(cmd_argv[0], "breakpoint")) {
-    if (cmd_argv.size() < 2) {
-      std::cerr << "Need argument" << std::endl;
-    }
-    std::string addr(cmd_argv[1], 2);
+  } else if (MatchCmd(cmd_argv, "breakpoint", 1)) {
+    auto cmd_arg = cmd_argv[1];
+    auto start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
+    std::string addr(cmd_arg, start_str);
     SetBreakpointAtAddress(std::stol(addr, 0, kHexBase));
   } else {
-    std::cerr << "Unknown command :(" << std::endl;
+    std::cerr << "Please check the command" << std::endl;
   }
 }
