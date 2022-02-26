@@ -8,6 +8,7 @@ class Debugger {
 
  private:
   void Wait();
-  void ProcessCommand(std::string cmd);
+  void ProcessCommand(const std::string & cmd);
+  bool MatchCmd(const std::string &, const std::string&);
   pid_t pid_;
 };

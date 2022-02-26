@@ -24,13 +24,20 @@ void Debugger::Wait() {
     waitpid(pid_, &status, 0);
 }
 
-void Debugger::ProcessCommand(std::string s){
+void Debugger::ProcessCommand(const std::string & s){
   if(s.empty()) {
       return;
   }
-  if(s == "continue") {
+  if(MatchCmd(s,"continue")) {
       Continue();
   } else {
       std::cerr << "Unknown command :(" << std::endl;
   }
+}
+
+bool Debugger::MatchCmd(const std::string & input, const std::string & cmd) {
+    // If input is longer, there are garbage character at the end
+    if (input.size() > cmd.size()) return false; 
+    // Now match all of input to cmd till the length of input
+    return std::equal(input.begin(), input.end(), cmd.begin());
 }
