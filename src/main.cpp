@@ -1,23 +1,37 @@
+#include <sys/ptrace.h>
+#include <unistd.h>
+
 #include <iostream>
+
+#include "debugger.h"
 using std::cerr;
-using std::cin;
 using std::cout;
-using std::string;
+using std::endl;
 
-class Repl {
- public:
-  static bool ProcessCommand(std::string& s) {
-    cerr << "Unknown command : " << s << std::endl;
-    return false;
+int main(int argc, char* argv[]) {
+  if (argc < 2) {
+    cerr << "Please provide program to debug" << endl;
+    return 1;
   }
-};
 
-int main() {
-  cout << "Namaskara jagattu!" << std::endl;
-  string s;
-  while (true) {
-    cout << "(db) ";
-    cin >> s;
-    Repl::ProcessCommand(s);
-  }
+  cout << "***** DB v0.01 *****" << endl;
+
+  auto pid = fork();
+  // and then there were two...
+
+  if (pid == 0) {
+    // Let the child be examinable and controllable by the parent
+    auto ret = ptrace(PTRACE_TRACEME, 0, nullptr, nullptr);
+    if (ret != 0) {
+      cerr << "Ptrace failed :(" << endl;
+      return 2;
+    }
+    execv(argv[1], &argv[1]);
+    cerr << "Failed to exec program" << endl;
+    return 3;
+  } else {
+    // Instantiate debugger and observe & control child 
+    Debugger my_debugger(pid);
+    my_debugger.StartRepl();
+  };
 }
