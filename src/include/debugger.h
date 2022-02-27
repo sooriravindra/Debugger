@@ -1,4 +1,7 @@
 #pragma once
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <string>
@@ -6,11 +9,18 @@
 #include <vector>
 
 #include "breakpoint.h"
+#include "dwarf/dwarf++.hh"
+#include "elf/elf++.hh"
 #include "registers.h"
 
 class Debugger {
  public:
-  explicit Debugger(pid_t pid) : pid_{pid} {}
+  explicit Debugger(const char* binary_name, pid_t pid)
+      : binary_name_{binary_name}, pid_{pid} {
+    auto fd = open(binary_name_, O_RDONLY);
+    elf_ = elf::elf(elf::create_mmap_loader(fd));
+    m_dwarf_ = dwarf::dwarf{dwarf::elf::create_loader(elf_)};
+  }
   void StartRepl();
   void Continue();
   void SetBreakpointAtAddress(std::uintptr_t addr);
@@ -29,5 +39,8 @@ class Debugger {
   void StepOverBreakpoint();
   static std::vector<std::string> SplitCommand(const std::string& cmd);
   pid_t pid_;
+  const char* binary_name_;
+  elf::elf elf_;
+  dwarf::dwarf m_dwarf_;
   std::unordered_map<std::uintptr_t, Breakpoint> breakpoints_;
 };

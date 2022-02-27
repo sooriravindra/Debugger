@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
       fail("Debugee terminated");
     }
     // Instantiate debugger and observe & control child
-    Debugger my_debugger(pid);
+    Debugger my_debugger(argv[1], pid);
     my_debugger.StartRepl();
   }
 }

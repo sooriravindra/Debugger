@@ -25,4 +25,8 @@ include_directories(src/include lib/linenoise lib/libelfin)
 
 add_executable(Debugger ${SRC_FILES} ${LIB_FILES})
 
+target_link_libraries(Debugger 
+  ${PROJECT_SOURCE_DIR}/lib/libelfin/elf/libelf++.so
+  ${PROJECT_SOURCE_DIR}/lib/libelfin/dwarf/libdwarf++.so)
+
 add_dependencies(Debugger Libelfin)
