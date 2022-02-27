@@ -4,6 +4,7 @@
 #include <sys/user.h>
 #include <sys/wait.h>
 
+#include <fstream>
 #include <iostream>
 #include <sstream>
 
@@ -54,13 +55,50 @@ void Debugger::StartRepl() {
   }
 }
 
-int Debugger::Wait(int* status) const { return waitpid(pid_, status, 0); }
+void Debugger::HandleSigtrap(siginfo_t siginfo) const {
+  switch (siginfo.si_code) {
+    case SI_KERNEL:
+    case TRAP_BRKPT: {
+      auto pc = GetRegister(Register::rip);
+      pc--;  // rewind PC to the trap instruction
+      SetRegister(Register::rip, pc);
+      std::cout << "**Hit breakpoint at address 0x" << std::hex << pc << "**"
+                << std::endl;
+      auto offset_pc = SubtractLoadAddress(pc);
+      auto line_entry = GetLineEntryFromPC(offset_pc);
+      PrintSource(line_entry->file->path, line_entry->line);
+      return;
+    }
+    case TRAP_TRACE:
+      // Single stepping
+      return;
+    default:
+      std::cout << "Unknown SIGTRAP code " << siginfo.si_code << std::endl;
+  }
+}
+
+int Debugger::Wait(int* status) const {
+  auto ret = waitpid(pid_, status, 0);
+  auto siginfo = GetSigInfo();
+  switch (siginfo.si_signo) {
+    case SIGTRAP:
+      HandleSigtrap(siginfo);
+      break;
+    case SIGSEGV:
+      std::cout << "Segmentation fault. Interesting! Reason : "
+                << siginfo.si_code << std::endl;
+      break;
+    default:
+      std::cout << "Got signal " << strsignal(siginfo.si_signo) << std::endl;
+  }
+  return ret;
+}
 
 void Debugger::StepOverBreakpoint() {
   // Subtract 1 from PC because the interrupt instruction was 1 byte
   // which is what the PC would have incremented by when it executes the
   // interrupt
-  auto possible_breakpoint_address = GetRegister(Register::rip) - 1;
+  auto possible_breakpoint_address = GetRegister(Register::rip);
 
   if (breakpoints_.count(possible_breakpoint_address) != 0) {
     auto& bp = breakpoints_[possible_breakpoint_address];
@@ -209,4 +247,90 @@ void Debugger::SetRegister(Register::Reg r, uint64_t value) const {
   ptrace(PTRACE_GETREGS, pid_, nullptr, &regs);
   *(reinterpret_cast<uint64_t*>(&regs) + static_cast<size_t>(r)) = value;
   ptrace(PTRACE_SETREGS, pid_, nullptr, &regs);
+}
+
+dwarf::die Debugger::GetFunctionFromPC(uint64_t pc) {
+  for (const auto& compilation_unit : dwarf_.compilation_units()) {
+    if (dwarf::die_pc_range(compilation_unit.root()).contains(pc)) {
+      for (const auto& die : compilation_unit.root()) {
+        if (die.tag == dwarf::DW_TAG::subprogram) {
+          if (dwarf::die_pc_range(die).contains(pc)) {
+            return die;
+          }
+        }
+      }
+    }
+  }
+  throw std::out_of_range{"Cannot find function"};
+}
+
+dwarf::line_table::iterator Debugger::GetLineEntryFromPC(uint64_t pc) const {
+  for (const auto& compilation_unit : dwarf_.compilation_units()) {
+    if (dwarf::die_pc_range(compilation_unit.root()).contains(pc)) {
+      const auto& line_table = compilation_unit.get_line_table();
+      auto it = line_table.find_address(pc);
+      if (it == line_table.end()) {
+        throw std::out_of_range{"Cannot find line entry"};
+      }
+      return it;
+    }
+  }
+  throw std::out_of_range{"Cannot find line entry"};
+}
+
+uint64_t Debugger::GetLoadAddress() {
+  // If this is a dynamic library (e.g. PIE)
+  if (elf_.get_hdr().type == elf::et::dyn) {
+    // The load address is found in /proc/pid/maps
+    std::ifstream maps("/proc/" + std::to_string(pid_) + "/maps");
+    std::string addr;
+    std::getline(maps, addr, '-');
+    return std::stol(addr, 0, kHexBase);
+  }
+  return 0;
+}
+
+siginfo_t Debugger::GetSigInfo() const {
+  siginfo_t info;
+  ptrace(PTRACE_GETSIGINFO, pid_, nullptr, &info);
+  return info;
+}
+
+void Debugger::PrintSource(const std::string& file_name, unsigned line,
+                           unsigned n_lines_context) {
+  std::ifstream file{file_name};
+
+  // Work out a window around the desired line
+  auto start_line = line <= n_lines_context ? 1 : line - n_lines_context;
+  auto end_line = line + n_lines_context +
+                  (line < n_lines_context ? n_lines_context - line : 0) + 1;
+
+  char c{};
+  auto current_line = 1U;
+  // Skip lines up until start_line
+  while (current_line != start_line && file.get(c)) {
+    if (c == '\n') {
+      ++current_line;
+    }
+  }
+
+  // Output cursor if we're at the current line
+  std::cout << (current_line == line ? "> " : "  ");
+
+  // Write lines up until end_line
+  while (current_line <= end_line && file.get(c)) {
+    std::cout << c;
+    if (c == '\n') {
+      ++current_line;
+      // Output cursor if we're at the current line
+      std::cout << (current_line == line ? "> " : "  ");
+    }
+  }
+
+  // Write newline and make sure that the stream is flushed properly
+  std::cout << std::endl;
+}
+
+uint64_t Debugger::SubtractLoadAddress(uint64_t addr) const {
+  return addr - load_address_;
 }
