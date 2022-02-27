@@ -136,7 +136,7 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     auto start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
     std::string addr(cmd_arg, start_str);
     SetBreakpointAtAddress(std::stol(addr, 0, kHexBase));
-  } else if (MatchCmd(cmd_argv, "registers", 0)) {
+  } else if (MatchCmd(cmd_argv, "registers-dump", 0)) {
     for (const auto& [k, v] : Register::register_lookup) {
       std::cout << std::hex << v << "\t:\t0x" << GetRegister(k) << std::endl;
     }
