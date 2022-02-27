@@ -12,6 +12,7 @@
 #include "registers.h"
 
 const auto kHexBase = 16;
+const auto kRegisterCount = 27;
 
 namespace Register {
 const std::unordered_map<Reg, std::string> register_lookup = {
@@ -55,7 +56,30 @@ void Debugger::StartRepl() {
 
 int Debugger::Wait(int* status) const { return waitpid(pid_, status, 0); }
 
+void Debugger::StepOverBreakpoint() {
+  // Subtract 1 from PC because the interrupt instruction was 1 byte
+  // which is what the PC would have incremented by when it executes the
+  // interrupt
+  auto possible_breakpoint_address = GetRegister(Register::rip) - 1;
+
+  if (breakpoints_.count(possible_breakpoint_address) != 0) {
+    auto& bp = breakpoints_[possible_breakpoint_address];
+    if (!bp.IsEnabled()) {
+      return;
+    }
+    // Set PC to the breakpoint address
+    SetRegister(Register::rip, possible_breakpoint_address);
+    // Undo the trap at the address
+    bp.Disable();
+    // Take one step and re-enable breakpoint
+    ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
+    Wait();
+    bp.Enable();
+  }
+}
+
 void Debugger::Continue() {
+  StepOverBreakpoint();
   ptrace(PTRACE_CONT, pid_, nullptr, nullptr);
   Wait();
 }
@@ -63,7 +87,7 @@ void Debugger::Continue() {
 void Debugger::SetBreakpointAtAddress(std::uintptr_t addr) {
   Breakpoint b(pid_, addr);
   b.Enable();
-  breakpoints_.insert(b);
+  breakpoints_[addr] = b;
   std::cout << "Breakpoint set at address : 0x" << std::hex << addr
             << std::endl;
 }
@@ -123,7 +147,8 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     } catch (std::exception& e) {
       std::cerr << e.what() << std::endl;
     }
-  } else if (MatchCmd(cmd_argv, "register-write", 2)) {
+  } else if (MatchCmd(cmd_argv, "write-register", 2)) {
+    SetRegister(cmd_argv[1], std::stol(cmd_argv[2], 0, kHexBase));
   } else {
     std::cerr << "Please check the command" << std::endl;
   }
@@ -139,7 +164,26 @@ uint64_t Debugger::GetRegister(std::string s) const {
 }
 
 uint64_t Debugger::GetRegister(Register::Reg r) const {
-  user_regs_struct reg_struct;
-  ptrace(PTRACE_GETREGS, pid_, nullptr, &reg_struct);
-  return *(reinterpret_cast<uint64_t *>(&reg_struct) + static_cast<size_t>(r));
+  user_regs_struct regs;
+  ptrace(PTRACE_GETREGS, pid_, nullptr, &regs);
+  return *(reinterpret_cast<uint64_t*>(&regs) + static_cast<size_t>(r));
+}
+
+void Debugger::SetRegister(std::string s, uint64_t value) const {
+  for (const auto& [k, v] : Register::register_lookup) {
+    if (v == s) {
+      return SetRegister(k, value);
+    }
+  }
+  throw std::runtime_error("Incorrect register name");
+}
+
+void Debugger::SetRegister(Register::Reg r, uint64_t value) const {
+  if (r < 0 || r > kRegisterCount) {
+    throw std::runtime_error("Attempted to set a bad register");
+  }
+  user_regs_struct regs;
+  ptrace(PTRACE_GETREGS, pid_, nullptr, &regs);
+  *(reinterpret_cast<uint64_t*>(&regs) + static_cast<size_t>(r)) = value;
+  ptrace(PTRACE_SETREGS, pid_, nullptr, &regs);
 }

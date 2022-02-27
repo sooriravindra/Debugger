@@ -22,7 +22,10 @@ class Debugger {
                        int num_args);
   uint64_t GetRegister(Register::Reg r) const;
   uint64_t GetRegister(std::string s) const;
+  void SetRegister(Register::Reg r, uint64_t value) const;
+  void SetRegister(std::string s, uint64_t value) const;
+  void StepOverBreakpoint();
   static std::vector<std::string> SplitCommand(const std::string &cmd);
   pid_t pid_;
-  std::unordered_set<Breakpoint, Breakpoint::HashFunction> breakpoints_;
+  std::unordered_map<std::uintptr_t, Breakpoint> breakpoints_;
 };
