@@ -149,9 +149,28 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     }
   } else if (MatchCmd(cmd_argv, "write-register", 2)) {
     SetRegister(cmd_argv[1], std::stol(cmd_argv[2], 0, kHexBase));
+  } else if (MatchCmd(cmd_argv, "read-memory", 1)) {
+    auto cmd_arg = cmd_argv[1];
+    auto start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
+    std::string addr(cmd_arg, start_str);
+    std::cout << std::hex << "0x" << GetMemory(std::stol(addr, 0, kHexBase))
+              << std::endl;
+  } else if (MatchCmd(cmd_argv, "write-memory", 2)) {
+    auto cmd_arg = cmd_argv[1];
+    auto start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
+    std::string addr(cmd_arg, start_str);
+
+    cmd_arg = cmd_argv[2];
+    start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
+    std::string value(cmd_arg, start_str);
+    SetMemory(std::stol(addr, 0, kHexBase), std::stol(value, 0, kHexBase));
   } else {
     std::cerr << "Please check the command" << std::endl;
   }
+}
+
+uint64_t Debugger::GetMemory(uintptr_t addr) const {
+  return ptrace(PTRACE_PEEKDATA, pid_, addr, nullptr);
 }
 
 uint64_t Debugger::GetRegister(std::string s) const {
@@ -167,6 +186,10 @@ uint64_t Debugger::GetRegister(Register::Reg r) const {
   user_regs_struct regs;
   ptrace(PTRACE_GETREGS, pid_, nullptr, &regs);
   return *(reinterpret_cast<uint64_t*>(&regs) + static_cast<size_t>(r));
+}
+
+void Debugger::SetMemory(uintptr_t addr, uint64_t value) const {
+  ptrace(PTRACE_POKEDATA, pid_, addr, value);
 }
 
 void Debugger::SetRegister(std::string s, uint64_t value) const {

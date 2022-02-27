@@ -16,16 +16,18 @@ class Debugger {
   void SetBreakpointAtAddress(std::uintptr_t addr);
 
  private:
-  int Wait(int *status = nullptr) const;
-  void ProcessCommand(const std::string &cmd);
-  static bool MatchCmd(std::vector<std::string> &input, const std::string &cmd,
+  int Wait(int* status = nullptr) const;
+  void ProcessCommand(const std::string& cmd);
+  static bool MatchCmd(std::vector<std::string>& input, const std::string& cmd,
                        int num_args);
   uint64_t GetRegister(Register::Reg r) const;
   uint64_t GetRegister(std::string s) const;
+  uint64_t GetMemory(uintptr_t addr) const;
   void SetRegister(Register::Reg r, uint64_t value) const;
   void SetRegister(std::string s, uint64_t value) const;
+  void SetMemory(uintptr_t addr, uint64_t value) const;
   void StepOverBreakpoint();
-  static std::vector<std::string> SplitCommand(const std::string &cmd);
+  static std::vector<std::string> SplitCommand(const std::string& cmd);
   pid_t pid_;
   std::unordered_map<std::uintptr_t, Breakpoint> breakpoints_;
 };
