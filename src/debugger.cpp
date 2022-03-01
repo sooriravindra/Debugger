@@ -84,10 +84,18 @@ int Debugger::Wait(int* status) const {
     case SIGTRAP:
       HandleSigtrap(siginfo);
       break;
-    case SIGSEGV:
-      std::cout << "Segmentation fault. Interesting! Reason : "
-                << siginfo.si_code << std::endl;
+    case SIGSEGV: {
+      std::array<std::string, 4> reason{"SEGV_MAPERR", "SEGV_ACCERR",
+                                        "SEGV_BNDERR", "SEGV_PKUERR"};
+      if (siginfo.si_code > 0 && siginfo.si_code < reason.size()) {
+        std::cout << "Segmentation fault. Reason : "
+                  << reason[siginfo.si_code] << std::endl;
+      } else {
+        std::cout << "Segmentation fault. Couldn't decipher reason! si_code : "
+                  << siginfo.si_code << std::endl;
+      }
       break;
+    }
     default:
       std::cout << "Got signal " << strsignal(siginfo.si_signo) << std::endl;
   }
