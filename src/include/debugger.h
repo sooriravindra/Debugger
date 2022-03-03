@@ -43,6 +43,8 @@ class Debugger {
   void SetRegister(std::string s, uint64_t value) const;
   void SetMemory(uintptr_t addr, uint64_t value) const;
   void StepOverBreakpoint();
+  void SingleStepInstruction();
+  void SingleStepInstructionWithBreakpointCheck();
   uint64_t GetLoadAddress();
   dwarf::die GetFunctionFromPC(uint64_t pc);
   dwarf::line_table::iterator GetLineEntryFromPC(uint64_t pc) const;

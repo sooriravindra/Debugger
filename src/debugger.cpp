@@ -124,6 +124,20 @@ void Debugger::StepOverBreakpoint() {
   }
 }
 
+void Debugger::SingleStepInstruction() {
+  ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) ;
+  Wait();
+}
+
+void Debugger::SingleStepInstructionWithBreakpointCheck() {
+  if(breakpoints_.count(GetRegister(Register::rip))) {
+    StepOverBreakpoint();
+  }
+  else {
+    SingleStepInstruction();
+  }
+}
+
 void Debugger::Continue() {
   StepOverBreakpoint();
   ptrace(PTRACE_CONT, pid_, nullptr, nullptr);
@@ -210,7 +224,12 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
     std::string value(cmd_arg, start_str);
     SetMemory(std::stol(addr, 0, kHexBase), std::stol(value, 0, kHexBase));
-  } else {
+  } else if(MatchCmd(cmd_argv, "step" , 0)) {
+    SingleStepInstructionWithBreakpointCheck();
+    auto offset_pc = SubtractLoadAddress(GetRegister(Register::rip));
+    auto line_entry = GetLineEntryFromPC(offset_pc);
+    PrintSource(line_entry->file->path, line_entry->line);
+  } else{
     std::cerr << "Please check the command" << std::endl;
   }
 }
@@ -278,7 +297,7 @@ dwarf::line_table::iterator Debugger::GetLineEntryFromPC(uint64_t pc) const {
       const auto& line_table = compilation_unit.get_line_table();
       auto it = line_table.find_address(pc);
       if (it == line_table.end()) {
-        throw std::out_of_range{"Cannot find line entry"};
+        throw std::out_of_range{"Cannot find line entry!"};
       }
       return it;
     }
