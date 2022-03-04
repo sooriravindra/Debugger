@@ -45,6 +45,10 @@ class Debugger {
   void StepOverBreakpoint();
   void SingleStepInstruction();
   void SingleStepInstructionWithBreakpointCheck();
+  void StepOut();
+  void StepOver();
+  void StepIn();
+  void RemoveBreakpoint(std::uintptr_t addr);
   uint64_t GetLoadAddress();
   dwarf::die GetFunctionFromPC(uint64_t pc);
   dwarf::line_table::iterator GetLineEntryFromPC(uint64_t pc) const;

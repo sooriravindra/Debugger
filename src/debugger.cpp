@@ -138,6 +138,72 @@ void Debugger::SingleStepInstructionWithBreakpointCheck() {
   }
 }
 
+void Debugger::RemoveBreakpoint(std::uintptr_t addr) {
+  if (breakpoints_.at(addr).IsEnabled()) {
+    breakpoints_.at(addr).Disable();
+  }
+  breakpoints_.erase(addr);
+}
+
+void Debugger::StepOut() {
+  auto frame_pointer = GetRegister(Register::rbp);
+  auto return_address = GetMemory(frame_pointer + 8);
+
+  bool should_remove_breakpoint = false;
+  if (!breakpoints_.count(return_address)) {
+    SetBreakpointAtAddress(return_address);
+    should_remove_breakpoint = true;
+  }
+
+  Continue();
+
+  if (should_remove_breakpoint) {
+    RemoveBreakpoint(return_address);
+  }
+}
+
+void Debugger::StepIn() {
+  auto line = GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)))->line;
+  while(GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)))->line == line) {
+    SingleStepInstruction();
+  }
+  auto line_entry = GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
+  PrintSource(line_entry->file->path, line_entry->line);
+}
+
+void Debugger::StepOver() {
+  auto func = GetFunctionFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
+  auto func_entry = dwarf::at_low_pc(func);
+  auto func_end = dwarf::at_high_pc(func);
+
+  auto line = GetLineEntryFromPC(func_entry);
+  auto start_line = GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
+
+  std::vector<std::uintptr_t> to_delete{};
+
+  while(line->address < func_end) {
+    auto load_address = load_address_ + line->address;
+    if (line->address != start_line->address && !breakpoints_.count(load_address)) {
+      SetBreakpointAtAddress(load_address);
+      to_delete.push_back(load_address);
+    }
+    ++line;
+  }
+
+  auto frame_pointer = GetRegister(Register::rbp);
+  auto return_address = GetMemory(frame_pointer + 8);
+  if (!breakpoints_.count(return_address)) {
+    SetBreakpointAtAddress(return_address);
+    to_delete.push_back(return_address);
+  }
+
+  Continue();
+
+  for (auto addr : to_delete) {
+    RemoveBreakpoint(addr);
+  }
+}
+
 void Debugger::Continue() {
   StepOverBreakpoint();
   ptrace(PTRACE_CONT, pid_, nullptr, nullptr);
@@ -224,11 +290,17 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
     std::string value(cmd_arg, start_str);
     SetMemory(std::stol(addr, 0, kHexBase), std::stol(value, 0, kHexBase));
-  } else if(MatchCmd(cmd_argv, "step" , 0)) {
+  } else if (MatchCmd(cmd_argv, "step", 0)) {
+    StepIn();
+  }else if(MatchCmd(cmd_argv, "stepi" , 0)) {
     SingleStepInstructionWithBreakpointCheck();
     auto offset_pc = SubtractLoadAddress(GetRegister(Register::rip));
     auto line_entry = GetLineEntryFromPC(offset_pc);
     PrintSource(line_entry->file->path, line_entry->line);
+  } else if (MatchCmd(cmd_argv, "next", 0)) {
+    StepOver();
+  } else if (MatchCmd(cmd_argv, "finish", 0)) {
+    StepOut();
   } else{
     std::cerr << "Please check the command" << std::endl;
   }
