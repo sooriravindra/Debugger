@@ -47,6 +47,61 @@ const std::unordered_map<Reg, std::string> register_lookup = {
     {gs, "gs"}};
 }  // namespace Register
 
+std::string to_string(SymbolType st) {
+  switch (st) {
+    case SymbolType::notype:
+      return "notype";
+    case SymbolType::object:
+      return "object";
+    case SymbolType::func:
+      return "func";
+    case SymbolType::section:
+      return "section";
+    case SymbolType::file:
+      return "file";
+  }
+  return "";
+}
+
+SymbolType to_symbol_type(elf::stt sym) {
+  switch (sym) {
+    case elf::stt::notype:
+      return SymbolType::notype;
+    case elf::stt::object:
+      return SymbolType::object;
+    case elf::stt::func:
+      return SymbolType::func;
+    case elf::stt::section:
+      return SymbolType::section;
+    case elf::stt::file:
+      return SymbolType::file;
+    default:
+      return SymbolType::notype;
+  }
+}
+
+std::vector<symbol> Debugger::LookupSymbol(const std::string& name) {
+  std::vector<symbol> syms;
+
+  for (const auto& sec : elf_.sections()) {
+    if (sec.get_hdr().type != elf::sht::symtab &&
+        sec.get_hdr().type != elf::sht::dynsym) {
+      continue;
+    }
+
+    for (auto sym_iter = sec.as_symtab().begin();
+         sym_iter != sec.as_symtab().end(); sym_iter++) {
+      auto sym = *sym_iter;
+      if (sym.get_name() == name) {
+        const auto& d = sym.get_data();
+        syms.push_back(
+            symbol{to_symbol_type(d.type()), sym.get_name(), d.value});
+      }
+    }
+  }
+  return syms;
+}
+
 void Debugger::StartRepl() {
   char* line_read = nullptr;
   while ((line_read = linenoise("(db) > ")) != nullptr) {

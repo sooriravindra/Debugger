@@ -14,6 +14,14 @@
 #include "elf/elf++.hh"
 #include "registers.h"
 
+enum class SymbolType { notype, object, func, section, file };
+
+struct symbol {
+  SymbolType type;
+  std::string name;
+  std::uintptr_t addr;
+};
+
 class Debugger {
  public:
   explicit Debugger(const char* binary_name, pid_t pid)
@@ -56,6 +64,7 @@ class Debugger {
   uint64_t SubtractLoadAddress(uint64_t addr) const;
   void SetBreakpointAtFunction(const std::string& name);
   void SetBreakpointAtSourceLine(const std::string& file, unsigned line);
+  std::vector<symbol> LookupSymbol(const std::string& name);
   pid_t pid_;
   const char* binary_name_;
   uint64_t load_address_;
