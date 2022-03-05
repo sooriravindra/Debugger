@@ -375,6 +375,8 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     StepOver();
   } else if (MatchCmd(cmd_argv, "finish", 0)) {
     StepOut();
+  } else if (MatchCmd(cmd_argv, "backtrace", 0)) {
+    PrintBacktrace();
   } else {
     std::cerr << "Please check the command" << std::endl;
   }
@@ -423,6 +425,7 @@ void Debugger::SetRegister(Register::Reg r, uint64_t value) const {
 }
 
 dwarf::die Debugger::GetFunctionFromPC(uint64_t pc) {
+  // TODO : Handle cases when AT_LOW_pc is not found
   for (const auto& compilation_unit : dwarf_.compilation_units()) {
     if (dwarf::die_pc_range(compilation_unit.root()).contains(pc)) {
       for (const auto& die : compilation_unit.root()) {
@@ -540,5 +543,25 @@ void Debugger::SetBreakpointAtSourceLine(const std::string& file,
         }
       }
     }
+  }
+}
+
+void Debugger::PrintBacktrace() {
+  auto output_frame = [frame_number = 0](auto&& func) mutable {
+    std::cout << "Frame #" << frame_number++ << ": 0x" << dwarf::at_low_pc(func)
+              << " " << dwarf::at_name(func) << std::endl;
+  };
+
+  auto current_func = GetFunctionFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
+  output_frame(current_func);
+
+  auto frame_pointer = GetRegister(Register::rbp);
+  auto return_address = GetMemory(frame_pointer + kRetAddressOffset);
+
+  while (dwarf::at_name(current_func) != "main") {
+    current_func = GetFunctionFromPC(SubtractLoadAddress(return_address));
+    output_frame(current_func);
+    frame_pointer = GetMemory(frame_pointer);
+    return_address = GetMemory(frame_pointer + kRetAddressOffset);
   }
 }

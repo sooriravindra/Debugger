@@ -66,6 +66,7 @@ class Debugger {
   void SetBreakpointAtFunction(const std::string& name);
   void SetBreakpointAtSourceLine(const std::string& file, unsigned line);
   std::vector<symbol> LookupSymbol(const std::string& name);
+  void PrintBacktrace();
   pid_t pid_;
   const char* binary_name_;
   uint64_t load_address_;
