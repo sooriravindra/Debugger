@@ -165,7 +165,7 @@ void Debugger::StepOut() {
 void Debugger::StepIn() {
   auto line = GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)))->line;
   while(GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)))->line == line) {
-    SingleStepInstruction();
+    SingleStepInstructionWithBreakpointCheck();
   }
   auto line_entry = GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
   PrintSource(line_entry->file->path, line_entry->line);
