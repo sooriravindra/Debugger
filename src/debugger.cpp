@@ -88,8 +88,8 @@ int Debugger::Wait(int* status) const {
       std::array<std::string, 4> reason{"SEGV_MAPERR", "SEGV_ACCERR",
                                         "SEGV_BNDERR", "SEGV_PKUERR"};
       if (siginfo.si_code > 0 && siginfo.si_code < reason.size()) {
-        std::cout << "Segmentation fault. Reason : "
-                  << reason[siginfo.si_code] << std::endl;
+        std::cout << "Segmentation fault. Reason : " << reason[siginfo.si_code]
+                  << std::endl;
       } else {
         std::cout << "Segmentation fault. Couldn't decipher reason! si_code : "
                   << siginfo.si_code << std::endl;
@@ -125,15 +125,14 @@ void Debugger::StepOverBreakpoint() {
 }
 
 void Debugger::SingleStepInstruction() {
-  ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) ;
+  ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr);
   Wait();
 }
 
 void Debugger::SingleStepInstructionWithBreakpointCheck() {
-  if(breakpoints_.count(GetRegister(Register::rip))) {
+  if (breakpoints_.count(GetRegister(Register::rip))) {
     StepOverBreakpoint();
-  }
-  else {
+  } else {
     SingleStepInstruction();
   }
 }
@@ -163,27 +162,33 @@ void Debugger::StepOut() {
 }
 
 void Debugger::StepIn() {
-  auto line = GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)))->line;
-  while(GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)))->line == line) {
+  auto line =
+      GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)))->line;
+  while (GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)))
+             ->line == line) {
     SingleStepInstructionWithBreakpointCheck();
   }
-  auto line_entry = GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
+  auto line_entry =
+      GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
   PrintSource(line_entry->file->path, line_entry->line);
 }
 
 void Debugger::StepOver() {
-  auto func = GetFunctionFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
+  auto func =
+      GetFunctionFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
   auto func_entry = dwarf::at_low_pc(func);
   auto func_end = dwarf::at_high_pc(func);
 
   auto line = GetLineEntryFromPC(func_entry);
-  auto start_line = GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
+  auto start_line =
+      GetLineEntryFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
 
   std::vector<std::uintptr_t> to_delete{};
 
-  while(line->address < func_end) {
+  while (line->address < func_end) {
     auto load_address = load_address_ + line->address;
-    if (line->address != start_line->address && !breakpoints_.count(load_address)) {
+    if (line->address != start_line->address &&
+        !breakpoints_.count(load_address)) {
       SetBreakpointAtAddress(load_address);
       to_delete.push_back(load_address);
     }
@@ -292,7 +297,7 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     SetMemory(std::stol(addr, 0, kHexBase), std::stol(value, 0, kHexBase));
   } else if (MatchCmd(cmd_argv, "step", 0)) {
     StepIn();
-  }else if(MatchCmd(cmd_argv, "stepi" , 0)) {
+  } else if (MatchCmd(cmd_argv, "stepi", 0)) {
     SingleStepInstructionWithBreakpointCheck();
     auto offset_pc = SubtractLoadAddress(GetRegister(Register::rip));
     auto line_entry = GetLineEntryFromPC(offset_pc);
@@ -301,7 +306,7 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     StepOver();
   } else if (MatchCmd(cmd_argv, "finish", 0)) {
     StepOut();
-  } else{
+  } else {
     std::cerr << "Please check the command" << std::endl;
   }
 }
@@ -434,14 +439,15 @@ uint64_t Debugger::SubtractLoadAddress(uint64_t addr) const {
   return addr - load_address_;
 }
 
-void Debugger::SetBreakpointAtFunction(const std::string & name) {
-  for (const auto & cu: dwarf_.compilation_units()) {
+void Debugger::SetBreakpointAtFunction(const std::string& name) {
+  for (const auto& cu : dwarf_.compilation_units()) {
     for (const auto& die : cu.root()) {
       if (die.has(dwarf::DW_AT::name) && dwarf::at_name(die) == name) {
         auto low_pc = dwarf::at_low_pc(die);
         auto entry = GetLineEntryFromPC(low_pc);
-        entry++; // skip prologue
+        entry++;  // skip prologue
         SetBreakpointAtAddress(load_address_ + entry->address);
       }
     }
   }
+}
