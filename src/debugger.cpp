@@ -299,11 +299,12 @@ bool Debugger::MatchCmd(std::vector<std::string>& input, const std::string& cmd,
   return true;
 }
 
-std::vector<std::string> Debugger::SplitCommand(const std::string& cmd) {
+std::vector<std::string> Debugger::SplitCommand(const std::string& cmd,
+                                                const char c) {
   std::stringstream ss(cmd);
   std::string word;
   std::vector<std::string> command_words;
-  while (ss >> word) {
+  while (std::getline(ss, word, c)) {
     command_words.push_back(word);
   }
   return command_words;
@@ -320,9 +321,15 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     Continue();
   } else if (MatchCmd(cmd_argv, "breakpoint", 1)) {
     auto cmd_arg = cmd_argv[1];
-    auto start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
-    std::string addr(cmd_arg, start_str);
-    SetBreakpointAtAddress(std::stol(addr, 0, kHexBase));
+    if (cmd_arg.find("0x") == 0) {
+      std::string addr(cmd_arg, 2);  // Start from loc 2
+      SetBreakpointAtAddress(std::stol(addr, 0, kHexBase));
+    } else if (cmd_arg.find(":") != std::string::npos) {
+      auto file_and_line = SplitCommand(cmd_arg, ':');
+      SetBreakpointAtSourceLine(file_and_line[0], std::stoi(file_and_line[1]));
+    } else {
+      SetBreakpointAtFunction(cmd_arg);
+    }
   } else if (MatchCmd(cmd_argv, "registers-dump", 0)) {
     for (const auto& [k, v] : Register::register_lookup) {
       std::cout << std::hex << v << "\t:\t0x" << GetRegister(k) << std::endl;
@@ -351,6 +358,12 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
     std::string value(cmd_arg, start_str);
     SetMemory(std::stol(addr, 0, kHexBase), std::stol(value, 0, kHexBase));
+  } else if (MatchCmd(cmd_argv, "symbol", 1)) {
+    auto syms = LookupSymbol(cmd_argv[1]);
+    for (auto&& s : syms) {
+      std::cout << s.name << " " << to_string(s.type) << " 0x" << std::hex
+                << s.addr << std::endl;
+    }
   } else if (MatchCmd(cmd_argv, "step", 0)) {
     StepIn();
   } else if (MatchCmd(cmd_argv, "stepi", 0)) {

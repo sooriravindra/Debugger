@@ -60,7 +60,8 @@ class Debugger {
   uint64_t GetLoadAddress();
   dwarf::die GetFunctionFromPC(uint64_t pc);
   dwarf::line_table::iterator GetLineEntryFromPC(uint64_t pc) const;
-  static std::vector<std::string> SplitCommand(const std::string& cmd);
+  static std::vector<std::string> SplitCommand(const std::string& cmd,
+                                               char c = ' ');
   uint64_t SubtractLoadAddress(uint64_t addr) const;
   void SetBreakpointAtFunction(const std::string& name);
   void SetBreakpointAtSourceLine(const std::string& file, unsigned line);
