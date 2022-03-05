@@ -55,6 +55,7 @@ class Debugger {
   static std::vector<std::string> SplitCommand(const std::string& cmd);
   uint64_t SubtractLoadAddress(uint64_t addr) const;
   void SetBreakpointAtFunction(const std::string& name);
+  void SetBreakpointAtSourceLine(const std::string& file, unsigned line);
   pid_t pid_;
   const char* binary_name_;
   uint64_t load_address_;

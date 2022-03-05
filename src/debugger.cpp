@@ -14,6 +14,7 @@
 
 const auto kHexBase = 16;
 const auto kRegisterCount = 27;
+const auto kRetAddressOffset = 8;
 
 namespace Register {
 const std::unordered_map<Reg, std::string> register_lookup = {
@@ -130,7 +131,7 @@ void Debugger::SingleStepInstruction() {
 }
 
 void Debugger::SingleStepInstructionWithBreakpointCheck() {
-  if (breakpoints_.count(GetRegister(Register::rip))) {
+  if (breakpoints_.count(GetRegister(Register::rip)) != 0) {
     StepOverBreakpoint();
   } else {
     SingleStepInstruction();
@@ -146,10 +147,10 @@ void Debugger::RemoveBreakpoint(std::uintptr_t addr) {
 
 void Debugger::StepOut() {
   auto frame_pointer = GetRegister(Register::rbp);
-  auto return_address = GetMemory(frame_pointer + 8);
+  auto return_address = GetMemory(frame_pointer + kRetAddressOffset);
 
   bool should_remove_breakpoint = false;
-  if (!breakpoints_.count(return_address)) {
+  if (breakpoints_.count(return_address) == 0) {
     SetBreakpointAtAddress(return_address);
     should_remove_breakpoint = true;
   }
@@ -188,7 +189,7 @@ void Debugger::StepOver() {
   while (line->address < func_end) {
     auto load_address = load_address_ + line->address;
     if (line->address != start_line->address &&
-        !breakpoints_.count(load_address)) {
+        breakpoints_.count(load_address) == 0) {
       SetBreakpointAtAddress(load_address);
       to_delete.push_back(load_address);
     }
@@ -196,8 +197,8 @@ void Debugger::StepOver() {
   }
 
   auto frame_pointer = GetRegister(Register::rbp);
-  auto return_address = GetMemory(frame_pointer + 8);
-  if (!breakpoints_.count(return_address)) {
+  auto return_address = GetMemory(frame_pointer + kRetAddressOffset);
+  if (breakpoints_.count(return_address) == 0) {
     SetBreakpointAtAddress(return_address);
     to_delete.push_back(return_address);
   }
@@ -447,6 +448,28 @@ void Debugger::SetBreakpointAtFunction(const std::string& name) {
         auto entry = GetLineEntryFromPC(low_pc);
         entry++;  // skip prologue
         SetBreakpointAtAddress(load_address_ + entry->address);
+      }
+    }
+  }
+}
+
+bool is_suffix(const std::string& a, const std::string& b) {
+  if (a.size() > b.size()) {
+    return false;
+  }
+  return std::equal(a.begin(), a.end(), b.begin() + (b.size() - a.size()));
+}
+
+void Debugger::SetBreakpointAtSourceLine(const std::string& file,
+                                         unsigned line) {
+  for (const auto& cu : dwarf_.compilation_units()) {
+    if (is_suffix(file, dwarf::at_name(cu.root()))) {
+      const auto& lt = cu.get_line_table();
+      for (const auto& entry : lt) {
+        if (entry.is_stmt && entry.line == line) {
+          SetBreakpointAtAddress(load_address_ + entry.address);
+          return;
+        }
       }
     }
   }
