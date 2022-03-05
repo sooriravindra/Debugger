@@ -54,6 +54,7 @@ class Debugger {
   dwarf::line_table::iterator GetLineEntryFromPC(uint64_t pc) const;
   static std::vector<std::string> SplitCommand(const std::string& cmd);
   uint64_t SubtractLoadAddress(uint64_t addr) const;
+  void SetBreakpointAtFunction(const std::string & name);
   pid_t pid_;
   const char* binary_name_;
   uint64_t load_address_;

@@ -433,3 +433,15 @@ void Debugger::PrintSource(const std::string& file_name, unsigned line,
 uint64_t Debugger::SubtractLoadAddress(uint64_t addr) const {
   return addr - load_address_;
 }
+
+void Debugger::SetBreakpointAtFunction(const std::string & name) {
+  for (const auto & cu: dwarf_.compilation_units()) {
+    for (const auto& die : cu.root()) {
+      if (die.has(dwarf::DW_AT::name) && dwarf::at_name(die) == name) {
+        auto low_pc = dwarf::at_low_pc(die);
+        auto entry = GetLineEntryFromPC(low_pc);
+        entry++; // skip prologue
+        SetBreakpointAtAddress(load_address_ + entry->address);
+      }
+    }
+  }
