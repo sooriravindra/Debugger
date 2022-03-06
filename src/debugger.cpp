@@ -92,7 +92,7 @@ std::vector<symbol> Debugger::LookupSymbol(const std::string& name) {
     for (auto sym_iter = sec.as_symtab().begin();
          sym_iter != sec.as_symtab().end(); sym_iter++) {
       auto sym = *sym_iter;
-      if (sym.get_name() == name) {
+      if (sym.get_name() == name || name == "*") {
         const auto& d = sym.get_data();
         syms.push_back(
             symbol{to_symbol_type(d.type()), sym.get_name(), d.value});
@@ -430,7 +430,8 @@ dwarf::die Debugger::GetFunctionFromPC(uint64_t pc) {
     if (dwarf::die_pc_range(compilation_unit.root()).contains(pc)) {
       for (const auto& die : compilation_unit.root()) {
         if (die.tag == dwarf::DW_TAG::subprogram) {
-          if (dwarf::die_pc_range(die).contains(pc)) {
+          if (die.has(dwarf::DW_AT::low_pc) &&
+              dwarf::die_pc_range(die).contains(pc)) {
             return die;
           }
         }
@@ -552,7 +553,8 @@ void Debugger::PrintBacktrace() {
               << " " << dwarf::at_name(func) << std::endl;
   };
 
-  auto current_func = GetFunctionFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
+  auto current_func =
+      GetFunctionFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
   output_frame(current_func);
 
   auto frame_pointer = GetRegister(Register::rbp);
