@@ -46,6 +46,7 @@ class Debugger {
                           unsigned n_lines_context = 2 << 2);
   uint64_t GetRegister(Register::Reg r) const;
   uint64_t GetRegister(std::string s) const;
+  uint64_t GetRegisterFromDwarfRegister(int regnum);
   uint64_t GetMemory(uintptr_t addr) const;
   void SetRegister(Register::Reg r, uint64_t value) const;
   void SetRegister(std::string s, uint64_t value) const;
@@ -67,6 +68,7 @@ class Debugger {
   void SetBreakpointAtSourceLine(const std::string& file, unsigned line);
   std::vector<symbol> LookupSymbol(const std::string& name);
   void PrintBacktrace();
+  void ReadVariables();
   pid_t pid_;
   const char* binary_name_;
   uint64_t load_address_;

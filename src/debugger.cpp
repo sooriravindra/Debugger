@@ -17,34 +17,34 @@ const auto kRegisterCount = 27;
 const auto kRetAddressOffset = 8;
 
 namespace Register {
-const std::unordered_map<Reg, std::string> register_lookup = {
-    {r15, "r15"},
-    {r14, "r14"},
-    {r13, "r13"},
-    {r12, "r12"},
-    {rbp, "rbp"},
-    {rbx, "rbx"},
-    {r11, "r11"},
-    {r10, "r10"},
-    {r9, "r9"},
-    {r8, "r8"},
-    {rax, "rax"},
-    {rcx, "rcx"},
-    {rdx, "rdx"},
-    {rsi, "rsi"},
-    {rdi, "rdi"},
-    {orig_rax, "orig_rax"},
-    {rip, "rip"},
-    {cs, "cs"},
-    {eflags, "eflags"},
-    {rsp, "rsp"},
-    {ss, "ss"},
-    {fs_base, "fs_base"},
-    {gs_base, "gs_base"},
-    {ds, "ds"},
-    {es, "es"},
-    {fs, "fs"},
-    {gs, "gs"}};
+const std::unordered_map<Reg, std::pair<std::string, int>> register_lookup = {
+    {r15, {"r15", 15}},
+    {r14, {"r14", 14}},
+    {r13, {"r13", 13}},
+    {r12, {"r12", 12}},
+    {rbp, {"rbp", 6}},
+    {rbx, {"rbx", 3}},
+    {r11, {"r11", 11}},
+    {r10, {"r10", 10}},
+    {r9, {"r9", 9}},
+    {r8, {"r8", 8}},
+    {rax, {"rax", 0}},
+    {rcx, {"rcx", 2}},
+    {rdx, {"rdx", 1}},
+    {rsi, {"rsi", 4}},
+    {rdi, {"rdi", 5}},
+    {orig_rax, {"orig_rax", -1}},
+    {rip, {"rip", -1}},
+    {cs, {"cs", 51}},
+    {eflags, {"eflags", 49}},
+    {rsp, {"rsp", 7}},
+    {ss, {"ss", 52}},
+    {fs_base, {"fs_base", 58}},
+    {gs_base, {"gs_base", 59}},
+    {ds, {"ds", 53}},
+    {es, {"es", 50}},
+    {fs, {"fs", 54}},
+    {gs, {"gs", 55}}};
 }  // namespace Register
 
 std::string to_string(SymbolType st) {
@@ -62,6 +62,40 @@ std::string to_string(SymbolType st) {
   }
   return "";
 }
+
+class PtraceExprContext : public dwarf::expr_context {
+ public:
+  explicit PtraceExprContext(pid_t pid, uint64_t load_address) : pid_{pid}, load_address_{load_address} {}
+
+  dwarf::taddr reg(unsigned regnum) override {
+    auto it = std::find_if(begin(Register::register_lookup),
+                           end(Register::register_lookup), [regnum](auto& p) {
+                             return (p.second.second == regnum);
+                           });
+    if (it == end(Register::register_lookup)) {
+      throw std::out_of_range("Dwarf register not found!");
+    }
+    struct user_regs_struct regs;
+    ptrace(PTRACE_GETREGS, pid_, nullptr, &regs);
+    return *(reinterpret_cast<uint64_t*>(&regs) +
+             static_cast<size_t>((*it).first));
+  }
+
+  dwarf::taddr pc() override {
+    struct user_regs_struct regs;
+    ptrace(PTRACE_GETREGS, pid_, nullptr, &regs);
+    return regs.rip - load_address_;
+  }
+
+  dwarf::taddr deref_size(dwarf::taddr address, unsigned size) override {
+    // rsoori TODO take into account size
+    return ptrace(PTRACE_PEEKDATA, pid_, address + load_address_, nullptr);
+  }
+
+ private:
+  pid_t pid_;
+  uint64_t load_address_;
+};
 
 SymbolType to_symbol_type(elf::stt sym) {
   switch (sym) {
@@ -332,7 +366,8 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     }
   } else if (MatchCmd(cmd_argv, "registers-dump", 0)) {
     for (const auto& [k, v] : Register::register_lookup) {
-      std::cout << std::hex << v << "\t:\t0x" << GetRegister(k) << std::endl;
+      std::cout << std::hex << v.first << "\t:\t0x" << GetRegister(k)
+                << std::endl;
     }
   } else if (MatchCmd(cmd_argv, "read-register", 1)) {
     try {
@@ -377,9 +412,56 @@ void Debugger::ProcessCommand(const std::string& cmd_line) {
     StepOut();
   } else if (MatchCmd(cmd_argv, "backtrace", 0)) {
     PrintBacktrace();
+  } else if (MatchCmd(cmd_argv, "variables", 0)) {
+    ReadVariables();
   } else {
     std::cerr << "Please check the command" << std::endl;
   }
+}
+
+void Debugger::ReadVariables() {
+  auto func =
+      GetFunctionFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
+
+  for (const auto& die : func) {
+    if (die.tag == dwarf::DW_TAG::variable) {
+      auto loc_val = die[dwarf::DW_AT::location];
+      if (loc_val.get_type() == dwarf::value::type::exprloc) {
+        PtraceExprContext context{pid_, load_address_};
+        auto result = loc_val.as_exprloc().evaluate(&context);
+        switch (result.location_type) {
+          case dwarf::expr_result::type::address: {
+            auto value = GetMemory(result.value);
+            std::cout << dwarf::at_name(die) << " (0x" << std::hex
+                      << result.value << ") = " << value << std::endl;
+            break;
+          }
+          case dwarf::expr_result::type::reg: {
+            auto value = GetRegisterFromDwarfRegister(result.value);
+            std::cout << dwarf::at_name(die) << " (reg" << result.value
+                      << ") = " << value << std::endl;
+            break;
+          }
+          default:
+            throw std::runtime_error("Unhandled variable location");
+        }
+      }
+      else {
+        throw std::runtime_error("Unhandled variable location");
+      }
+    }
+  }
+}
+
+uint64_t Debugger::GetRegisterFromDwarfRegister(int regnum) {
+  auto it = std::find_if(begin(Register::register_lookup),
+                         end(Register::register_lookup), [regnum](auto& p) {
+                           return (p.second.second == regnum);
+                         });
+  if (it == end(Register::register_lookup)) {
+    throw std::out_of_range("Dwarf register not found!");
+  }
+  return GetRegister((*it).first);
 }
 
 uint64_t Debugger::GetMemory(uintptr_t addr) const {
@@ -388,7 +470,7 @@ uint64_t Debugger::GetMemory(uintptr_t addr) const {
 
 uint64_t Debugger::GetRegister(std::string s) const {
   for (const auto& [k, v] : Register::register_lookup) {
-    if (v == s) {
+    if (v.first == s) {
       return GetRegister(k);
     }
   }
@@ -407,7 +489,7 @@ void Debugger::SetMemory(uintptr_t addr, uint64_t value) const {
 
 void Debugger::SetRegister(std::string s, uint64_t value) const {
   for (const auto& [k, v] : Register::register_lookup) {
-    if (v == s) {
+    if (v.first == s) {
       return SetRegister(k, value);
     }
   }
@@ -425,7 +507,6 @@ void Debugger::SetRegister(Register::Reg r, uint64_t value) const {
 }
 
 dwarf::die Debugger::GetFunctionFromPC(uint64_t pc) {
-  // TODO : Handle cases when AT_LOW_pc is not found
   for (const auto& compilation_unit : dwarf_.compilation_units()) {
     if (dwarf::die_pc_range(compilation_unit.root()).contains(pc)) {
       for (const auto& die : compilation_unit.root()) {
