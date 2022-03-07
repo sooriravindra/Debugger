@@ -65,13 +65,13 @@ std::string to_string(SymbolType st) {
 
 class PtraceExprContext : public dwarf::expr_context {
  public:
-  explicit PtraceExprContext(pid_t pid, uint64_t load_address) : pid_{pid}, load_address_{load_address} {}
+  explicit PtraceExprContext(pid_t pid, uint64_t load_address)
+      : pid_{pid}, load_address_{load_address} {}
 
   dwarf::taddr reg(unsigned regnum) override {
-    auto it = std::find_if(begin(Register::register_lookup),
-                           end(Register::register_lookup), [regnum](auto& p) {
-                             return (p.second.second == regnum);
-                           });
+    auto it = std::find_if(
+        begin(Register::register_lookup), end(Register::register_lookup),
+        [regnum](auto& p) { return (p.second.second == regnum); });
     if (it == end(Register::register_lookup)) {
       throw std::out_of_range("Dwarf register not found!");
     }
@@ -445,8 +445,7 @@ void Debugger::ReadVariables() {
           default:
             throw std::runtime_error("Unhandled variable location");
         }
-      }
-      else {
+      } else {
         throw std::runtime_error("Unhandled variable location");
       }
     }
@@ -454,10 +453,9 @@ void Debugger::ReadVariables() {
 }
 
 uint64_t Debugger::GetRegisterFromDwarfRegister(int regnum) {
-  auto it = std::find_if(begin(Register::register_lookup),
-                         end(Register::register_lookup), [regnum](auto& p) {
-                           return (p.second.second == regnum);
-                         });
+  auto it = std::find_if(
+      begin(Register::register_lookup), end(Register::register_lookup),
+      [regnum](auto& p) { return (p.second.second == regnum); });
   if (it == end(Register::register_lookup)) {
     throw std::out_of_range("Dwarf register not found!");
   }
