@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.1)
 project(Debugger)
 
+add_subdirectory(test)
+
 file(GLOB SRC_FILES src/*.cpp)
 file(GLOB HEADER_FILES src/include/*.h)
 set(LIB_FILES lib/linenoise/linenoise.c)

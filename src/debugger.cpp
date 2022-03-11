@@ -88,7 +88,7 @@ class PtraceExprContext : public dwarf::expr_context {
   }
 
   dwarf::taddr deref_size(dwarf::taddr address, unsigned size) override {
-    // rsoori TODO take into account size
+    // name TODO take into account size
     return ptrace(PTRACE_PEEKDATA, pid_, address + load_address_, nullptr);
   }
 
@@ -344,81 +344,6 @@ std::vector<std::string> Debugger::SplitCommand(const std::string& cmd,
   return command_words;
 }
 
-void Debugger::ProcessCommand(const std::string& cmd_line) {
-  auto cmd_argv = SplitCommand(cmd_line);
-
-  if (cmd_argv.empty()) {
-    return;
-  }
-
-  if (MatchCmd(cmd_argv, "continue", 0)) {
-    Continue();
-  } else if (MatchCmd(cmd_argv, "breakpoint", 1)) {
-    auto cmd_arg = cmd_argv[1];
-    if (cmd_arg.find("0x") == 0) {
-      std::string addr(cmd_arg, 2);  // Start from loc 2
-      SetBreakpointAtAddress(std::stol(addr, 0, kHexBase));
-    } else if (cmd_arg.find(":") != std::string::npos) {
-      auto file_and_line = SplitCommand(cmd_arg, ':');
-      SetBreakpointAtSourceLine(file_and_line[0], std::stoi(file_and_line[1]));
-    } else {
-      SetBreakpointAtFunction(cmd_arg);
-    }
-  } else if (MatchCmd(cmd_argv, "registers-dump", 0)) {
-    for (const auto& [k, v] : Register::register_lookup) {
-      std::cout << std::hex << v.first << "\t:\t0x" << GetRegister(k)
-                << std::endl;
-    }
-  } else if (MatchCmd(cmd_argv, "read-register", 1)) {
-    try {
-      auto value = GetRegister(cmd_argv[1]);
-      std::cout << std::hex << "0x" << value << std::endl;
-    } catch (std::exception& e) {
-      std::cerr << e.what() << std::endl;
-    }
-  } else if (MatchCmd(cmd_argv, "write-register", 2)) {
-    SetRegister(cmd_argv[1], std::stol(cmd_argv[2], 0, kHexBase));
-  } else if (MatchCmd(cmd_argv, "read-memory", 1)) {
-    auto cmd_arg = cmd_argv[1];
-    auto start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
-    std::string addr(cmd_arg, start_str);
-    std::cout << std::hex << "0x" << GetMemory(std::stol(addr, 0, kHexBase))
-              << std::endl;
-  } else if (MatchCmd(cmd_argv, "write-memory", 2)) {
-    auto cmd_arg = cmd_argv[1];
-    auto start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
-    std::string addr(cmd_arg, start_str);
-
-    cmd_arg = cmd_argv[2];
-    start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
-    std::string value(cmd_arg, start_str);
-    SetMemory(std::stol(addr, 0, kHexBase), std::stol(value, 0, kHexBase));
-  } else if (MatchCmd(cmd_argv, "symbol", 1)) {
-    auto syms = LookupSymbol(cmd_argv[1]);
-    for (auto&& s : syms) {
-      std::cout << s.name << " " << to_string(s.type) << " 0x" << std::hex
-                << s.addr << std::endl;
-    }
-  } else if (MatchCmd(cmd_argv, "step", 0)) {
-    StepIn();
-  } else if (MatchCmd(cmd_argv, "stepi", 0)) {
-    SingleStepInstructionWithBreakpointCheck();
-    auto offset_pc = SubtractLoadAddress(GetRegister(Register::rip));
-    auto line_entry = GetLineEntryFromPC(offset_pc);
-    PrintSource(line_entry->file->path, line_entry->line);
-  } else if (MatchCmd(cmd_argv, "next", 0)) {
-    StepOver();
-  } else if (MatchCmd(cmd_argv, "finish", 0)) {
-    StepOut();
-  } else if (MatchCmd(cmd_argv, "backtrace", 0)) {
-    PrintBacktrace();
-  } else if (MatchCmd(cmd_argv, "variables", 0)) {
-    ReadVariables();
-  } else {
-    std::cerr << "Please check the command" << std::endl;
-  }
-}
-
 void Debugger::ReadVariables() {
   auto func =
       GetFunctionFromPC(SubtractLoadAddress(GetRegister(Register::rip)));
@@ -644,5 +569,80 @@ void Debugger::PrintBacktrace() {
     output_frame(current_func);
     frame_pointer = GetMemory(frame_pointer);
     return_address = GetMemory(frame_pointer + kRetAddressOffset);
+  }
+}
+
+void Debugger::ProcessCommand(const std::string& cmd_line) {
+  auto cmd_argv = SplitCommand(cmd_line);
+
+  if (cmd_argv.empty()) {
+    return;
+  }
+
+  if (MatchCmd(cmd_argv, "continue", 0)) {
+    Continue();
+  } else if (MatchCmd(cmd_argv, "breakpoint", 1)) {
+    auto cmd_arg = cmd_argv[1];
+    if (cmd_arg.find("0x") == 0) {
+      std::string addr(cmd_arg, 2);  // Start from loc 2
+      SetBreakpointAtAddress(std::stol(addr, 0, kHexBase));
+    } else if (cmd_arg.find(":") != std::string::npos) {
+      auto file_and_line = SplitCommand(cmd_arg, ':');
+      SetBreakpointAtSourceLine(file_and_line[0], std::stoi(file_and_line[1]));
+    } else {
+      SetBreakpointAtFunction(cmd_arg);
+    }
+  } else if (MatchCmd(cmd_argv, "registers-dump", 0)) {
+    for (const auto& [k, v] : Register::register_lookup) {
+      std::cout << std::hex << v.first << "\t:\t0x" << GetRegister(k)
+                << std::endl;
+    }
+  } else if (MatchCmd(cmd_argv, "read-register", 1)) {
+    try {
+      auto value = GetRegister(cmd_argv[1]);
+      std::cout << std::hex << "0x" << value << std::endl;
+    } catch (std::exception& e) {
+      std::cerr << e.what() << std::endl;
+    }
+  } else if (MatchCmd(cmd_argv, "write-register", 2)) {
+    SetRegister(cmd_argv[1], std::stol(cmd_argv[2], 0, kHexBase));
+  } else if (MatchCmd(cmd_argv, "read-memory", 1)) {
+    auto cmd_arg = cmd_argv[1];
+    auto start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
+    std::string addr(cmd_arg, start_str);
+    std::cout << std::hex << "0x" << GetMemory(std::stol(addr, 0, kHexBase))
+              << std::endl;
+  } else if (MatchCmd(cmd_argv, "write-memory", 2)) {
+    auto cmd_arg = cmd_argv[1];
+    auto start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
+    std::string addr(cmd_arg, start_str);
+
+    cmd_arg = cmd_argv[2];
+    start_str = cmd_arg.find("0x") == 0 ? 2 : 0;
+    std::string value(cmd_arg, start_str);
+    SetMemory(std::stol(addr, 0, kHexBase), std::stol(value, 0, kHexBase));
+  } else if (MatchCmd(cmd_argv, "symbol", 1)) {
+    auto syms = LookupSymbol(cmd_argv[1]);
+    for (auto&& s : syms) {
+      std::cout << s.name << " " << to_string(s.type) << " 0x" << std::hex
+                << s.addr << std::endl;
+    }
+  } else if (MatchCmd(cmd_argv, "step", 0)) {
+    StepIn();
+  } else if (MatchCmd(cmd_argv, "stepi", 0)) {
+    SingleStepInstructionWithBreakpointCheck();
+    auto offset_pc = SubtractLoadAddress(GetRegister(Register::rip));
+    auto line_entry = GetLineEntryFromPC(offset_pc);
+    PrintSource(line_entry->file->path, line_entry->line);
+  } else if (MatchCmd(cmd_argv, "next", 0)) {
+    StepOver();
+  } else if (MatchCmd(cmd_argv, "finish", 0)) {
+    StepOut();
+  } else if (MatchCmd(cmd_argv, "backtrace", 0)) {
+    PrintBacktrace();
+  } else if (MatchCmd(cmd_argv, "variables", 0)) {
+    ReadVariables();
+  } else {
+    std::cerr << "Please check the command" << std::endl;
   }
 }
